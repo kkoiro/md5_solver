@@ -36,6 +36,7 @@ int thread_counter = 0; // A number of threads
 int word_kind_num;
 int all_word_comb; // A number of all word combination
 int process_unit; // A number of words processed in each thread
+int rest;
 volatile int flag = 0;
 
 
@@ -43,7 +44,7 @@ volatile int flag = 0;
  * Word list
  */
 char dictionary[] = {
-  'a', 'b', 'c'
+  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
 };
 
 
@@ -58,7 +59,7 @@ void func_i(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long 
 void md5(char *pt, char *output);
 
 void *search(void *param);
-int comp_target_update(unsigned int *val, int pos);
+void comp_target_update(unsigned int *val, int pos);
 
 
 /*
@@ -75,10 +76,10 @@ int main(int argc, char **argv){
   /*
    * Check input
    */
-  //if(argc != 4 || strlen(argv[1]) != 32){
-  //  fprintf(stderr, "Usage: %s [target hash] [target length] [thread num]\n", argv[0]);
-  //  exit(-1);
-  //}
+  if(argc != 4 || strlen(argv[1]) != 32){
+    fprintf(stderr, "Usage: %s [target hash] [target length] [thread num]\n", argv[0]);
+    exit(-1);
+  }
 
 
   /*
@@ -90,6 +91,7 @@ int main(int argc, char **argv){
   word_kind_num = sizeof(dictionary) / sizeof(char);
   all_word_comb = pow(word_kind_num, target_len); // calculate a number of all word combination
   process_unit = all_word_comb / thread_num;
+  rest = all_word_comb % thread_num;
 
 
   /*
@@ -118,6 +120,15 @@ int main(int argc, char **argv){
 
   pthread_mutex_destroy(&mutex);
 
+
+  /*
+   * Show result
+   */
+  if(flag){
+    printf("Finish!!\n");
+  }else{
+    printf("The matching string not found...\n");
+  }
 
   return 0;
 
@@ -323,12 +334,13 @@ void md5(char *pt, char *output){
 void *search(void *param){
 
   int i; // for loop
+  int j; // for loop
 
   int my_num;
   unsigned int start_num;
   unsigned int pos[target_len];
   char comp_target[target_len + 1];
-  char comp_result[33];
+  char comp_target_hash[33];
 
 
   /*
@@ -341,7 +353,7 @@ void *search(void *param){
 
 
   /*
-   * Calculate the first word
+   * Calculate the first string
    */
   start_num = process_unit * my_num;
 
@@ -355,36 +367,44 @@ void *search(void *param){
 
   /*
    * Create comparison target word from dictionary
+   *  & Search the matching string
    */
-  while(1){
-    for(i = 0; i < target_len; i++){
-      comp_target[i] = dictionary[pos[i]];
-    }
-    comp_target[target_len] = '\0';
-    printf("%d %s\n", my_num, comp_target);
-    if(comp_target_update(pos, 0)){
+  for(i = 0; i < process_unit + rest; i++){
+    if(flag){
       break;
     }
+
+    for(j = 0; j < target_len; j++){
+      comp_target[j] = dictionary[pos[j]];
+    }
+    comp_target[target_len] = '\0';
+    //printf("%03d: %s\n", my_num, comp_target);
+
+    md5(comp_target, comp_target_hash); // Make comp_target be hash
+    if(strcmp(target_hash, comp_target_hash) == 0){
+      flag = 1;
+      printf("%s\n", comp_target);
+      break;
+    }
+
+    comp_target_update(pos, 0);
   }
+
 
   return NULL;
 
 }
 
-int comp_target_update(unsigned int *val, int pos){
-
-  int result = 0;
+void comp_target_update(unsigned int *val, int pos){
 
   val[pos] += 1;
   if(val[pos] == word_kind_num){
     if(pos == target_len - 1){
-      return 1;
+      return;
     }
     val[pos] = 0;
     pos += 1;
-    result = comp_target_update(val, pos);
+    comp_target_update(val, pos);
   }
-
-  return result;
 
 }
