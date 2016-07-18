@@ -1,192 +1,230 @@
+/*
+ * Include files
+ */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 
-
-#define FIRST_PADDING 0b10000000
-#define PADDING 0b00000000
+/*
+ * Constants definition
+ */
+#define FIRST_PADDING 0x80
+#define PADDING 0x00
 #define LOW_MD5 64
 
+/*
+ * Initial values of hash seed
+ */
 #define A 0x67452301
 #define B 0xEFCDAB89
 #define C 0x98BADCFE
 #define D 0x10325476
+
+/*
+ * Macros definition
+ */
+#define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
 
 #define F(x, y, z) (((x) & (y)) | ((~x) & (z)))
 #define G(x, y, z) (((x) & (z)) | ((y) & (~z)))
 #define H(x, y, z) ((x) ^ (y) ^ (z))
 #define I(x, y, z) ((y) ^ ((x) | (~z)))
 
-#define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
-
-#define FF(a, b, c, d, x, s, ac){ \
-  (a) += F((b), (c), (d)) + (x) + (unsigned long)(ac); \
-  (a) = ROTATE_LEFT((a), (s)); \
-  (a) += (b); \
+#define FF(a, b, c, d, x, s, t){ \
+  (a) = ((a) + F((b), (c), (d)) + (x) + (t)) & (0xFFFFFFFF); \
+  (a) = ROTATE_LEFT((a), (s)) & (0xFFFFFFFF); \
+  (a) = ((a) + (b)) & (0xFFFFFFFF); \
 }
-#define GG(a, b, c, d, x, s, ac){ \
-  (a) += G((b), (c), (d)) + (x) + (unsigned long)(ac); \
-  (a) = ROTATE_LEFT((a), (s)); \
-  (a) += (b); \
+#define GG(a, b, c, d, x, s, t){ \
+  (a) = ((a) + G((b), (c), (d)) + (x) + (t)) & (0xFFFFFFFF); \
+  (a) = ROTATE_LEFT((a), (s)) & (0xFFFFFFFF); \
+  (a) = ((a) + (b)) & (0xFFFFFFFF); \
 }
-#define HH(a, b, c, d, x, s, ac){ \
-  (a) += H((b), (c), (d)) + (x) + (unsigned long)(ac); \
-  (a) = ROTATE_LEFT((a), (s)); \
-  (a) += (b); \
+#define HH(a, b, c, d, x, s, t){ \
+  (a) = ((a) + H((b), (c), (d)) + (x) + (t)) & (0xFFFFFFFF); \
+  (a) = ROTATE_LEFT((a), (s)) & (0xFFFFFFFF); \
+  (a) = ((a) + (b)) & (0xFFFFFFFF); \
 }
-#define II(a, b, c, d, x, s, ac){ \
-  (a) += I((b), (c), (d)) + (x) + (unsigned long)(ac); \
-  (a) = ROTATE_LEFT((a), (s)); \
-  (a) += (b); \
+#define II(a, b, c, d, x, s, t){ \
+  (a) = ((a) + I((b), (c), (d)) + (x) + (t)) & (0xFFFFFFFF); \
+  (a) = ROTATE_LEFT((a), (s)) & (0xFFFFFFFF); \
+  (a) = ((a) + (b)) & (0xFFFFFFFF); \
 }
 
 
-// 入力は55文字以下と想定
+/*
+ * Note:
+ * - The expected length of input text is less than 56(len < 56)
+ */
 int main(int argc, char **argv){
 
-  unsigned long table[64];
-  int l;
-  for(l = 0; l < 64; l++){
-    table[l] = 4294967296 * fabs(sin(l)); // 4294967296 = 2^32
+  int i; // for loop
+  int j; // for loop
+
+  /*
+   * Check argments count
+   */
+  if(argc != 2){
+    fprintf(stderr, "Usage: %s [text]\n", argv[0]);
+    exit(-1);
   }
 
-  char *input = (char *)malloc(LOW_MD5);
-  if(!input){
+
+  /*
+   * Prepare the table used for hash process
+   */
+  unsigned long t[64];
+  for(i = 0; i < 64; i++){
+    t[i] = pow(2, 32) * fabs(sin(i + 1));
+  }
+
+
+  /*
+   * Make the target string from the inputted string
+   */
+  char *text = (char *)malloc(LOW_MD5);
+  if(!text){
     perror("malloc: ");
     exit(1);
   }
-  strcpy(input, argv[1]); //入力文字列をcopy
+  strcpy(text, argv[1]);
 
-  unsigned int str_len_byte = strlen(argv[1]);
-  int except_parity = LOW_MD5 - 8; // 入力bit数を入れる8を除いた数
-  int i;
-  input[str_len_byte] = FIRST_PADDING;
-  for(i = str_len_byte + 1; i < except_parity; i++){
-    input[i] = PADDING;
-  }
-  unsigned long long str_len_bit = str_len_byte * 8; // 入力bit数を計算
-  int j;
-  for(j = 0; j < 8; j++){
-    input[except_parity + j] = (char)(str_len_bit >> j * 8) & 0xFF; //入力もbit長を下位byteから付加
+  int str_byte = strlen(argv[1]);
+  int except_parity = LOW_MD5 - 8; // the bit length of input string is put into the last 8 bytes
+  text[str_byte] = FIRST_PADDING;
+  for(i = str_byte + 1; i < except_parity; i++){
+    text[i] = PADDING;
   }
 
+  unsigned long long str_bit = (unsigned long long)str_byte * 8;
+  for(i = 0; i < 8; i++){
+    text[except_parity + i] = (char)(str_bit >> i * 8) & 0xFF;
+  }
+
+
+  /*
+   * Devide the target into 16 for hash process
+   */
   unsigned long x[16];
-  int m;
-  int n;
-  unsigned long tmp;
-  for(m = 0; m < 16; m++){
-    for(n = 0; n < 4; n++){
-      x[m] ^= ((unsigned long)input[4 * m + n] & 0xFF) << (3 - n) * 8;
+  for(i = 0; i < 16; i++){
+    for(j = 0; j < 4; j++){
+      x[i] ^= ((unsigned long)text[4 * i + j] & 0xFF) << j * 8;
     }
   }
 
+
+  /*
+   * Make the target be hash with MD5
+   */
   unsigned long a = A, b = B, c = C, d = D;
 
-  FF(a, b, c, d, input[ 0],  7, table[ 0]);
-  FF(d, a, b, c, input[ 1], 12, table[ 1]);
-  FF(c, d, a, b, input[ 2], 17, table[ 2]);
-  FF(b, c, d, a, input[ 3], 22, table[ 3]);
-  FF(a, b, c, d, input[ 4],  7, table[ 4]);
-  FF(d, a, b, c, input[ 5], 12, table[ 5]);
-  FF(c, d, a, b, input[ 6], 17, table[ 6]);
-  FF(b, c, d, a, input[ 7], 22, table[ 7]);
-  FF(a, b, c, d, input[ 8],  7, table[ 8]);
-  FF(d, a, b, c, input[ 9], 12, table[ 9]);
-  FF(c, d, a, b, input[10], 17, table[10]);
-  FF(b, c, d, a, input[11], 22, table[11]);
-  FF(a, b, c, d, input[12],  7, table[12]);
-  FF(d, a, b, c, input[13], 12, table[13]);
-  FF(c, d, a, b, input[14], 17, table[14]);
-  FF(b, c, d, a, input[15], 22, table[15]);
+  FF(a, b, c, d, x[ 0],  7, t[ 0]);
+  FF(d, a, b, c, x[ 1], 12, t[ 1]);
+  FF(c, d, a, b, x[ 2], 17, t[ 2]);
+  FF(b, c, d, a, x[ 3], 22, t[ 3]);
+  FF(a, b, c, d, x[ 4],  7, t[ 4]);
+  FF(d, a, b, c, x[ 5], 12, t[ 5]);
+  FF(c, d, a, b, x[ 6], 17, t[ 6]);
+  FF(b, c, d, a, x[ 7], 22, t[ 7]);
+  FF(a, b, c, d, x[ 8],  7, t[ 8]);
+  FF(d, a, b, c, x[ 9], 12, t[ 9]);
+  FF(c, d, a, b, x[10], 17, t[10]);
+  FF(b, c, d, a, x[11], 22, t[11]);
+  FF(a, b, c, d, x[12],  7, t[12]);
+  FF(d, a, b, c, x[13], 12, t[13]);
+  FF(c, d, a, b, x[14], 17, t[14]);
+  FF(b, c, d, a, x[15], 22, t[15]);
 
-  GG(a, b, c, d, input[ 1],  5, table[16]);
-  GG(d, a, b, c, input[ 6],  9, table[17]);
-  GG(c, d, a, b, input[11], 14, table[18]);
-  GG(b, c, d, a, input[ 0], 20, table[19]);
-  GG(a, b, c, d, input[ 5],  5, table[20]);
-  GG(d, a, b, c, input[10],  9, table[21]);
-  GG(c, d, a, b, input[15], 14, table[22]);
-  GG(b, c, d, a, input[ 4], 20, table[23]);
-  GG(a, b, c, d, input[ 9],  5, table[24]);
-  GG(d, a, b, c, input[14],  9, table[25]);
-  GG(c, d, a, b, input[ 3], 14, table[26]);
-  GG(b, c, d, a, input[ 8], 20, table[27]);
-  GG(a, b, c, d, input[13],  5, table[28]);
-  GG(d, a, b, c, input[ 2],  9, table[29]);
-  GG(c, d, a, b, input[ 7], 14, table[30]);
-  GG(b, c, d, a, input[12], 20, table[31]);
+  GG(a, b, c, d, x[ 1],  5, t[16]);
+  GG(d, a, b, c, x[ 6],  9, t[17]);
+  GG(c, d, a, b, x[11], 14, t[18]);
+  GG(b, c, d, a, x[ 0], 20, t[19]);
+  GG(a, b, c, d, x[ 5],  5, t[20]);
+  GG(d, a, b, c, x[10],  9, t[21]);
+  GG(c, d, a, b, x[15], 14, t[22]);
+  GG(b, c, d, a, x[ 4], 20, t[23]);
+  GG(a, b, c, d, x[ 9],  5, t[24]);
+  GG(d, a, b, c, x[14],  9, t[25]);
+  GG(c, d, a, b, x[ 3], 14, t[26]);
+  GG(b, c, d, a, x[ 8], 20, t[27]);
+  GG(a, b, c, d, x[13],  5, t[28]);
+  GG(d, a, b, c, x[ 2],  9, t[29]);
+  GG(c, d, a, b, x[ 7], 14, t[30]);
+  GG(b, c, d, a, x[12], 20, t[31]);
 
-  HH(a, b, c, d, input[ 5],  4, table[32]);
-  HH(d, a, b, c, input[ 8], 11, table[33]);
-  HH(c, d, a, b, input[11], 16, table[34]);
-  HH(b, c, d, a, input[14], 23, table[35]);
-  HH(a, b, c, d, input[ 1],  4, table[36]);
-  HH(d, a, b, c, input[ 4], 11, table[37]);
-  HH(c, d, a, b, input[ 7], 16, table[38]);
-  HH(b, c, d, a, input[10], 23, table[39]);
-  HH(a, b, c, d, input[13],  4, table[40]);
-  HH(d, a, b, c, input[ 0], 11, table[41]);
-  HH(c, d, a, b, input[ 3], 16, table[42]);
-  HH(b, c, d, a, input[ 6], 23, table[43]);
-  HH(a, b, c, d, input[ 9],  4, table[44]);
-  HH(d, a, b, c, input[12], 11, table[45]);
-  HH(c, d, a, b, input[15], 16, table[46]);
-  HH(b, c, d, a, input[ 2], 23, table[47]);
+  HH(a, b, c, d, x[ 5],  4, t[32]);
+  HH(d, a, b, c, x[ 8], 11, t[33]);
+  HH(c, d, a, b, x[11], 16, t[34]);
+  HH(b, c, d, a, x[14], 23, t[35]);
+  HH(a, b, c, d, x[ 1],  4, t[36]);
+  HH(d, a, b, c, x[ 4], 11, t[37]);
+  HH(c, d, a, b, x[ 7], 16, t[38]);
+  HH(b, c, d, a, x[10], 23, t[39]);
+  HH(a, b, c, d, x[13],  4, t[40]);
+  HH(d, a, b, c, x[ 0], 11, t[41]);
+  HH(c, d, a, b, x[ 3], 16, t[42]);
+  HH(b, c, d, a, x[ 6], 23, t[43]);
+  HH(a, b, c, d, x[ 9],  4, t[44]);
+  HH(d, a, b, c, x[12], 11, t[45]);
+  HH(c, d, a, b, x[15], 16, t[46]);
+  HH(b, c, d, a, x[ 2], 23, t[47]);
 
-  II(a, b, c, d, input[ 0],  6, table[48]);
-  II(d, a, b, c, input[ 7], 10, table[49]);
-  II(c, d, a, b, input[14], 15, table[50]);
-  II(b, c, d, a, input[ 5], 21, table[51]);
-  II(a, b, c, d, input[12],  6, table[52]);
-  II(d, a, b, c, input[ 3], 10, table[53]);
-  II(c, d, a, b, input[10], 15, table[54]);
-  II(b, c, d, a, input[ 1], 21, table[55]);
-  II(a, b, c, d, input[ 8],  6, table[56]);
-  II(d, a, b, c, input[15], 10, table[57]);
-  II(c, d, a, b, input[ 6], 15, table[58]);
-  II(b, c, d, a, input[13], 21, table[59]);
-  II(a, b, c, d, input[ 4],  6, table[60]);
-  II(d, a, b, c, input[11], 10, table[61]);
-  II(c, d, a, b, input[ 2], 15, table[62]);
-  II(b, c, d, a, input[ 9], 21, table[63]);
+  II(a, b, c, d, x[ 0],  6, t[48]);
+  II(d, a, b, c, x[ 7], 10, t[49]);
+  II(c, d, a, b, x[14], 15, t[50]);
+  II(b, c, d, a, x[ 5], 21, t[51]);
+  II(a, b, c, d, x[12],  6, t[52]);
+  II(d, a, b, c, x[ 3], 10, t[53]);
+  II(c, d, a, b, x[10], 15, t[54]);
+  II(b, c, d, a, x[ 1], 21, t[55]);
+  II(a, b, c, d, x[ 8],  6, t[56]);
+  II(d, a, b, c, x[15], 10, t[57]);
+  II(c, d, a, b, x[ 6], 15, t[58]);
+  II(b, c, d, a, x[13], 21, t[59]);
+  II(a, b, c, d, x[ 4],  6, t[60]);
+  II(d, a, b, c, x[11], 10, t[61]);
+  II(c, d, a, b, x[ 2], 15, t[62]);
+  II(b, c, d, a, x[ 9], 21, t[63]);
 
-  a = a + A;
-  b = b + B;
-  c = c + C;
-  d = d + D;
+  a = (a + A) & 0xFFFFFFFF;
+  b = (b + B) & 0xFFFFFFFF;
+  c = (c + C) & 0xFFFFFFFF;
+  d = (d + D) & 0xFFFFFFFF;
 
-  char *output = (char *)malloc(16);
-  if(!output){
+
+  /*
+   * Make the result hash from hash seeds
+   */
+  char *hash = (char *)malloc(16);
+  if(!hash){
     perror("malloc: ");
     exit(1);
   }
-  int p;
-  int q;
-  unsigned long target;
-  for(p = 0; p < 4; p++){
-    switch(p){
+
+  unsigned long obj;
+  for(i = 0; i < 4; i++){
+    switch(i){
       case 0:
-        target = a;
+        obj = a;
         break;
       case 1:
-        target = b;
+        obj = b;
         break;
       case 2:
-        target = c;
+        obj = c;
         break;
       case 3:
-        target = d;
+        obj = d;
         break;
     }
-    for(q = 0; q < 4; q++){
-      output[p * 4 + q] = (char)(target >> q * 8) & 0xFF;
+    for(j = 0; j < 4; j++){
+      hash[i * 4 + j] = (char)(obj >> j * 8) & 0xFF;
     }
   }
 
-  int k;
-  for(k = 0; k < 16; k++){
-    printf("%02hhx\n", output[k]);
+  for(i = 0; i < 16; i++){
+    printf("%02hhx", hash[i]);
   }
   printf("\n");
 
