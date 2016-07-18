@@ -25,6 +25,55 @@
 
 
 /*
+ * Global variables
+ */
+unsigned long t[64]; // Used for hash process
+
+
+/*
+ * Function declarations
+ */
+void func_f(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned long *x, int s, unsigned long *t);
+void func_g(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned long *x, int s, unsigned long *t);
+void func_h(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned long *x, int s, unsigned long *t);
+void func_i(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned long *x, int s, unsigned long *t);
+
+void md5(char *pt, char *output);
+
+
+/*
+ * Main function
+ */
+int main(int argc, char **argv){
+
+  int i; // for loop
+  int j; // for loop
+
+  /*
+   * Check argments count
+   */
+  if(argc != 2){
+    fprintf(stderr, "Usage: %s [text]\n", argv[0]);
+    exit(-1);
+  }
+
+
+  /*
+   * Prepare the table used for hash process
+   */
+  for(i = 0; i < 64; i++){
+    t[i] = pow(2, 32) * fabs(sin(i + 1));
+  }
+
+  char output[64];
+  md5(argv[1], output);
+  printf("%s\n", output);
+
+  return 0;
+}
+
+
+/*
  * Making hash functions
  */
 void func_f(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long *d, unsigned long *x, int s, unsigned long *t){
@@ -50,29 +99,20 @@ void func_i(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long 
 
 
 /*
- * Global variables
- */
-unsigned long t[64]; // Used for hash process
-
-
-/*
  * Hash function
  * Note:
  *  The expected length of input text is less than 56(len < 56)
  */
-void md5(char *pt){
+void md5(char *pt, char *output){
 
   int i; // for loop
   int j; // for loop
 
+
   /*
    * Make the target string from the inputted string
    */
-  char *text = (char *)malloc(LOW_MD5);
-  if(!text){
-    perror("malloc: ");
-    exit(1);
-  }
+  char text[LOW_MD5];
   strcpy(text, pt);
 
   int str_byte = strlen(pt);
@@ -101,7 +141,6 @@ void md5(char *pt){
       }
     }
   }
-  free(text);
 
 
   /*
@@ -189,11 +228,7 @@ void md5(char *pt){
   /*
    * Make the result hash from hash seeds
    */
-  char *hash = (char *)malloc(16);
-  if(!hash){
-    perror("malloc: ");
-    exit(1);
-  }
+  char hash[16];
 
   unsigned long obj;
   for(i = 0; i < 4; i++){
@@ -216,40 +251,16 @@ void md5(char *pt){
     }
   }
 
+  char tmp[3];
+  char result[32 + 1];
   for(i = 0; i < 16; i++){
-    printf("%02hhx", hash[i]);
+    sprintf(tmp, "%02hhx", hash[i]);
+    for(j = 0; j < 2; j++){
+      result[i * 2 + j] = tmp[j];
+    }
   }
-  printf("\n");
-  free(hash);
+  result[32] = '\0';
 
-}
+  strcpy(output, result);
 
-
-/*
- * Main function
- */
-int main(int argc, char **argv){
-
-  int i; // for loop
-  int j; // for loop
-
-  /*
-   * Check argments count
-   */
-  if(argc != 2){
-    fprintf(stderr, "Usage: %s [text]\n", argv[0]);
-    exit(-1);
-  }
-
-
-  /*
-   * Prepare the table used for hash process
-   */
-  for(i = 0; i < 64; i++){
-    t[i] = pow(2, 32) * fabs(sin(i + 1));
-  }
-
-  md5(argv[1]);
-
-  return 0;
 }
