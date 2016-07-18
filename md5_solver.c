@@ -6,12 +6,14 @@
 #include <stdlib.h>
 #include <math.h>
 
+
 /*
  * Constants definition
  */
 #define FIRST_PADDING 0x80
 #define PADDING 0x00
 #define LOW_MD5 64
+
 
 /*
  * Initial values of hash seed
@@ -48,31 +50,20 @@ void func_i(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long 
 
 
 /*
- * Note:
- * - The expected length of input text is less than 56(len < 56)
+ * Global variables
  */
-int main(int argc, char **argv){
+unsigned long t[64]; // Used for hash process
+
+
+/*
+ * Hash function
+ * Note:
+ *  The expected length of input text is less than 56(len < 56)
+ */
+void md5(char *pt){
 
   int i; // for loop
   int j; // for loop
-
-  /*
-   * Check argments count
-   */
-  if(argc != 2){
-    fprintf(stderr, "Usage: %s [text]\n", argv[0]);
-    exit(-1);
-  }
-
-
-  /*
-   * Prepare the table used for hash process
-   */
-  unsigned long t[64];
-  for(i = 0; i < 64; i++){
-    t[i] = pow(2, 32) * fabs(sin(i + 1));
-  }
-
 
   /*
    * Make the target string from the inputted string
@@ -82,9 +73,9 @@ int main(int argc, char **argv){
     perror("malloc: ");
     exit(1);
   }
-  strcpy(text, argv[1]);
+  strcpy(text, pt);
 
-  int str_byte = strlen(argv[1]);
+  int str_byte = strlen(pt);
   int except_parity = LOW_MD5 - 8; // the bit length of input string is put into the last 8 bytes
   text[str_byte] = FIRST_PADDING;
   for(i = str_byte + 1; i < except_parity; i++){
@@ -103,32 +94,23 @@ int main(int argc, char **argv){
   unsigned long x[16];
   for(i = 0; i < 16; i++){
     for(j = 0; j < 4; j++){
-      x[i] ^= ((unsigned long)text[4 * i + j] & 0xFF) << j * 8;
+      if(j == 0){
+        x[i] = ((unsigned long)text[4 * i + j] & 0xFF) << j * 8;
+      }else{
+        x[i] ^= ((unsigned long)text[4 * i + j] & 0xFF) << j * 8;
+      }
     }
   }
+  free(text);
 
 
   /*
    * Make the target be hash with MD5
    */
-  unsigned long a = A, b = B, c = C, d = D;
-
-  //FF(a, b, c, d, x[ 0],  7, t[ 0]);
-  //FF(d, a, b, c, x[ 1], 12, t[ 1]);
-  //FF(c, d, a, b, x[ 2], 17, t[ 2]);
-  //FF(b, c, d, a, x[ 3], 22, t[ 3]);
-  //FF(a, b, c, d, x[ 4],  7, t[ 4]);
-  //FF(d, a, b, c, x[ 5], 12, t[ 5]);
-  //FF(c, d, a, b, x[ 6], 17, t[ 6]);
-  //FF(b, c, d, a, x[ 7], 22, t[ 7]);
-  //FF(a, b, c, d, x[ 8],  7, t[ 8]);
-  //FF(d, a, b, c, x[ 9], 12, t[ 9]);
-  //FF(c, d, a, b, x[10], 17, t[10]);
-  //FF(b, c, d, a, x[11], 22, t[11]);
-  //FF(a, b, c, d, x[12],  7, t[12]);
-  //FF(d, a, b, c, x[13], 12, t[13]);
-  //FF(c, d, a, b, x[14], 17, t[14]);
-  //FF(b, c, d, a, x[15], 22, t[15]);
+  unsigned long a = A;
+  unsigned long b = B;
+  unsigned long c = C;
+  unsigned long d = D;
 
   func_f(&a, &b, &c, &d, &x[ 0],  7, &t[ 0]);
   func_f(&d, &a, &b, &c, &x[ 1], 12, &t[ 1]);
@@ -238,6 +220,36 @@ int main(int argc, char **argv){
     printf("%02hhx", hash[i]);
   }
   printf("\n");
+  free(hash);
+
+}
+
+
+/*
+ * Main function
+ */
+int main(int argc, char **argv){
+
+  int i; // for loop
+  int j; // for loop
+
+  /*
+   * Check argments count
+   */
+  if(argc != 2){
+    fprintf(stderr, "Usage: %s [text]\n", argv[0]);
+    exit(-1);
+  }
+
+
+  /*
+   * Prepare the table used for hash process
+   */
+  for(i = 0; i < 64; i++){
+    t[i] = pow(2, 32) * fabs(sin(i + 1));
+  }
+
+  md5(argv[1]);
 
   return 0;
 }
