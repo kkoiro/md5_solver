@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <pthread.h>
 
 
 /*
@@ -28,6 +29,22 @@
  * Global variables
  */
 unsigned long t[64]; // Used for hash process
+char target_hash[33]; // Search target hash string
+int target_len; // Search target length
+pthread_mutex_t mutex; // Mutex
+int thread_counter = 0; // A number of threads
+int word_kind_num;
+int all_word_comb; // A number of all word combination
+int process_unit; // A number of words processed in each thread
+volatile int flag = 0;
+
+
+/*
+ * Word list
+ */
+char dictionary[] = {
+  'a', 'b', 'c'
+};
 
 
 /*
@@ -40,6 +57,9 @@ void func_i(unsigned long *a, unsigned long *b, unsigned long *c, unsigned long 
 
 void md5(char *pt, char *output);
 
+void *search(void *param);
+int comp_target_update(unsigned int *val, int pos);
+
 
 /*
  * Main function
@@ -49,13 +69,27 @@ int main(int argc, char **argv){
   int i; // for loop
   int j; // for loop
 
+  int thread_num; // A number of threads
+
+
   /*
-   * Check argments count
+   * Check input
    */
-  if(argc != 2){
-    fprintf(stderr, "Usage: %s [text]\n", argv[0]);
-    exit(-1);
-  }
+  //if(argc != 4 || strlen(argv[1]) != 32){
+  //  fprintf(stderr, "Usage: %s [target hash] [target length] [thread num]\n", argv[0]);
+  //  exit(-1);
+  //}
+
+
+  /*
+   * Some preparations
+   */
+  strcpy(target_hash, argv[1]); // set target
+  target_len = atoi(argv[2]); // set target length
+  thread_num = atoi(argv[3]); // set target length
+  word_kind_num = sizeof(dictionary) / sizeof(char);
+  all_word_comb = pow(word_kind_num, target_len); // calculate a number of all word combination
+  process_unit = all_word_comb / thread_num;
 
 
   /*
@@ -65,11 +99,28 @@ int main(int argc, char **argv){
     t[i] = pow(2, 32) * fabs(sin(i + 1));
   }
 
-  char output[64];
-  md5(argv[1], output);
-  printf("%s\n", output);
+
+  /*
+   * Search with thread
+   */
+  pthread_mutex_init(&mutex, NULL);
+
+  pthread_t thread[thread_num];
+  for(i = 0; i < thread_num; i++){
+    if(pthread_create(&thread[i], NULL, search, NULL) != 0){
+      perror("pthread_create: ");
+    }
+  }
+
+  for(i = 0; i < thread_num; i++){
+    pthread_join(thread[i], NULL);
+  }
+
+  pthread_mutex_destroy(&mutex);
+
 
   return 0;
+
 }
 
 
@@ -110,7 +161,7 @@ void md5(char *pt, char *output){
 
 
   /*
-   * Make the target string from the inputted string
+   * Add puddings after the inputted string
    */
   char text[LOW_MD5];
   strcpy(text, pt);
@@ -129,7 +180,7 @@ void md5(char *pt, char *output){
 
 
   /*
-   * Devide the target into 16 for hash process
+   * Devide the arranged string 16 for hash process
    */
   unsigned long x[16];
   for(i = 0; i < 16; i++){
@@ -144,7 +195,7 @@ void md5(char *pt, char *output){
 
 
   /*
-   * Make the target be hash with MD5
+   * Make the arranged string be hash with MD5
    */
   unsigned long a = A;
   unsigned long b = B;
@@ -226,7 +277,7 @@ void md5(char *pt, char *output){
 
 
   /*
-   * Make the result hash from hash seeds
+   * Make the result hash from processed hash seeds
    */
   char hash[16];
 
@@ -262,5 +313,78 @@ void md5(char *pt, char *output){
   result[32] = '\0';
 
   strcpy(output, result);
+
+}
+
+
+/*
+ * Thread function
+ */
+void *search(void *param){
+
+  int i; // for loop
+
+  int my_num;
+  unsigned int start_num;
+  unsigned int pos[target_len];
+  char comp_target[target_len + 1];
+  char comp_result[33];
+
+
+  /*
+   * Get this thread number
+   */
+  pthread_mutex_lock(&mutex);
+  my_num = thread_counter;
+  thread_counter++;
+  pthread_mutex_unlock(&mutex);
+
+
+  /*
+   * Calculate the first word
+   */
+  start_num = process_unit * my_num;
+
+  unsigned int pos_low;
+  for(i = target_len - 1; i >= 0; i--){
+    pos_low = pow(word_kind_num, i);
+    pos[i] = start_num / pos_low;
+    start_num -= pos[i] * pos_low;
+  }
+
+
+  /*
+   * Create comparison target word from dictionary
+   */
+  while(1){
+    for(i = 0; i < target_len; i++){
+      comp_target[i] = dictionary[pos[i]];
+    }
+    comp_target[target_len] = '\0';
+    printf("%d %s\n", my_num, comp_target);
+    if(comp_target_update(pos, 0)){
+      break;
+    }
+  }
+
+  return NULL;
+
+}
+
+int comp_target_update(unsigned int *val, int pos){
+
+  int result = 0;
+
+  val[pos] += 1;
+  if(val[pos] == word_kind_num){
+    if(pos == target_len - 1){
+      return 1;
+    }
+    val[pos] = 0;
+    pos += 1;
+    result = comp_target_update(val, pos);
+  }
+
+  return result;
 
 }
