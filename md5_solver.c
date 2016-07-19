@@ -89,7 +89,7 @@ int main(int argc, char **argv){
   target_len = atoi(argv[2]); // set target length
   thread_num = atoi(argv[3]); // set target length
   word_kind_num = sizeof(dictionary) / sizeof(char);
-  all_word_comb = pow(word_kind_num, target_len); // calculate a number of all word combination
+  all_word_comb = pow(word_kind_num, target_len); // bottle neck
   process_unit = all_word_comb / thread_num;
   rest = all_word_comb % thread_num;
 
@@ -359,7 +359,7 @@ void *search(void *param){
 
   unsigned int pos_low;
   for(i = target_len - 1; i >= 0; i--){
-    pos_low = pow(word_kind_num, i);
+    pos_low = pow(word_kind_num, i); // bottle neck
     pos[i] = start_num / pos_low;
     start_num -= pos[i] * pos_low;
   }
